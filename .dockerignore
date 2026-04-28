@@ -1,0 +1,12 @@
+node_modules
+dist
+*.srt
+**/draft_content.json
+**/draft_content.json.bak
+kitabsiyam1 final/
+raziyayn7 final/
+thalathat 7 final/
+convert_to_srt.py
+.git
+.gitignore
+.gcloudignore

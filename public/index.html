@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CapCut → SRT</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d10;
+        --panel: #14171c;
+        --border: #2a2f37;
+        --text: #e6e8eb;
+        --muted: #8a929c;
+        --accent: #6ea8ff;
+        --accent-hover: #8fbcff;
+        --error: #ff7a7a;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(560px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 28px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        font-weight: 600;
+      }
+      p.sub {
+        margin: 0 0 20px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .drop {
+        display: block;
+        border: 1.5px dashed var(--border);
+        border-radius: 10px;
+        padding: 36px 16px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 120ms, background 120ms;
+      }
+      .drop:hover, .drop.dragover {
+        border-color: var(--accent);
+        background: rgba(110, 168, 255, 0.06);
+      }
+      .drop strong { color: var(--accent); }
+      .drop small {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      input[type="file"] { display: none; }
+      .status {
+        margin-top: 16px;
+        min-height: 20px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .status.error { color: var(--error); }
+      .status.ok { color: var(--text); }
+      .filename {
+        margin-top: 12px;
+        padding: 10px 12px;
+        background: #1a1e25;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 13px;
+        word-break: break-all;
+        display: none;
+      }
+      .filename.visible { display: block; }
+      button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 12px;
+        font-size: 14px;
+        font-weight: 500;
+        background: var(--accent);
+        color: #0b0d10;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 120ms;
+      }
+      button:hover:not(:disabled) { background: var(--accent-hover); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 6px;
+        vertical-align: -2px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>CapCut → SRT</h1>
+      <p class="sub">Upload a zipped CapCut project folder. Get back an .srt with the same name.</p>
+
+      <label class="drop" id="drop">
+        <strong>Choose a .zip</strong> or drag it here
+        <small>The zip must contain <code>draft_content.json</code></small>
+        <input type="file" id="file" accept=".zip,application/zip" />
+      </label>
+
+      <div class="filename" id="filename"></div>
+      <button id="submit" disabled>Convert</button>
+      <div class="status" id="status"></div>
+    </main>
+
+    <script>
+      const drop = document.getElementById("drop");
+      const fileInput = document.getElementById("file");
+      const filenameEl = document.getElementById("filename");
+      const submitBtn = document.getElementById("submit");
+      const statusEl = document.getElementById("status");
+
+      let selected = null;
+
+      function setFile(f) {
+        if (!f) {
+          selected = null;
+          filenameEl.classList.remove("visible");
+          submitBtn.disabled = true;
+          return;
+        }
+        selected = f;
+        filenameEl.textContent = f.name + "  (" + (f.size / 1024 / 1024).toFixed(2) + " MB)";
+        filenameEl.classList.add("visible");
+        submitBtn.disabled = false;
+        statusEl.textContent = "";
+        statusEl.className = "status";
+      }
+
+      fileInput.addEventListener("change", (e) => setFile(e.target.files[0] || null));
+
+      ["dragenter", "dragover"].forEach((ev) =>
+        drop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          drop.classList.add("dragover");
+        })
+      );
+      ["dragleave", "drop"].forEach((ev) =>
+        drop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          drop.classList.remove("dragover");
+        })
+      );
+      drop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer.files[0];
+        if (f) setFile(f);
+      });
+
+      submitBtn.addEventListener("click", async () => {
+        if (!selected) return;
+        submitBtn.disabled = true;
+        statusEl.className = "status";
+        statusEl.innerHTML = '<span class="spinner"></span>Converting…';
+
+        const fd = new FormData();
+        fd.append("file", selected);
+
+        try {
+          const res = await fetch("/convert", { method: "POST", body: fd });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || ("HTTP " + res.status));
+          }
+          const cueCount = res.headers.get("X-Cue-Count");
+          const blob = await res.blob();
+          const base = selected.name.replace(/\.zip$/i, "") || "subtitles";
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = base + ".srt";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          statusEl.className = "status ok";
+          statusEl.textContent = "Done — " + (cueCount || "?") + " cues. Saved as " + base + ".srt";
+        } catch (err) {
+          statusEl.className = "status error";
+          statusEl.textContent = err.message || "Conversion failed";
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.srt
+kitabsiyam1 final/
+raziyayn7 final/
+thalathat 7 final/
+test-*.zip
+convert_to_srt.py
+.DS_Store
